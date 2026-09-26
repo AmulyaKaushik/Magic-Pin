@@ -179,12 +179,12 @@ def _inst_research_digest(trigger, category, merchant, customer) -> str:
     return """This is a RESEARCH DIGEST trigger. Frame the message as a peer sharing relevant clinical/industry research.
 
 KEY SCORING TARGETS:
-- SPECIFICITY: Cite the exact study — trial size, percentage, source publication, page number
+- SPECIFICITY: Cite the exact study — trial size, percentage, source publication, page number from the digest. CRITICAL: Do NOT invent patient counts or chart numbers (e.g. do not invent "124 patients in your chart") unless an exact number appears in the merchant context.
 - CATEGORY FIT: Use clinical/peer vocabulary, source citation style
 - TRIGGER RELEVANCE: The digest item IS the reason for messaging — make that explicit
 - ENGAGEMENT: Offer to pull the abstract or draft patient-ed content they can reshare
 
-DO: "JIDA Oct trial — 2,100-patient study, 38% better recurrence rate. Want me to pull the abstract?"
+DO: "Dr. Meera, JIDA Oct 2026 (p.14) trial (n=2,100) shows 38% lower caries recurrence with 3-month fluoride varnish recalls. Want me to pull the 1-page summary?"
 DON'T: "New research shows dental care is important"
 CTA should be open_ended."""
 

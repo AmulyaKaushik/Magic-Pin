@@ -113,6 +113,8 @@ def main():
             "rationale": result.get("rationale", ""),
         }
         results.append(line)
+        import time
+        time.sleep(0.5)
 
     # Write submission.jsonl
     output_path = Path(__file__).parent / "submission.jsonl"

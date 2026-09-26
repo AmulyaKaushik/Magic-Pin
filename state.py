@@ -23,6 +23,9 @@ conversations: dict[str, list[dict[str, Any]]] = {}
 # suppression_keys already fired this session
 suppression_log: set[str] = set()
 
+# auto-reply count per merchant / conv
+auto_reply_counts: dict[str, int] = {}
+
 VALID_SCOPES = {"category", "merchant", "customer", "trigger"}
 
 
@@ -119,3 +122,22 @@ def is_suppressed(suppression_key: str) -> bool:
 
 def mark_suppressed(suppression_key: str):
     suppression_log.add(suppression_key)
+
+
+def record_auto_reply(key: str) -> int:
+    """Increment and return the auto-reply count for a merchant or conversation."""
+    auto_reply_counts[key] = auto_reply_counts.get(key, 0) + 1
+    return auto_reply_counts[key]
+
+
+def get_auto_reply_count(key: str) -> int:
+    return auto_reply_counts.get(key, 0)
+
+
+def clear_all():
+    """Clear all in-memory state (for teardown/testing)."""
+    contexts.clear()
+    conversations.clear()
+    suppression_log.clear()
+    auto_reply_counts.clear()
+

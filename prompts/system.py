@@ -47,7 +47,7 @@ Respond ONLY with valid JSON:
 
 ## HARD RULES
 
-1. **DO NOT FABRICATE**: Only use data present in the provided context. No fake research citations, no fake competitor names, no invented statistics.
+1. **DO NOT FABRICATE**: Only use data present in the provided context. No fake research citations, no fake competitor names, no invented statistics. CRITICAL: NEVER invent patient counts or customer numbers (e.g. NEVER make up '124 patients in your chart' or '45 customers'). Every number you cite MUST be explicitly present in the provided context. Fabricating numbers costs -5 to -10 points on the evaluation rubric.
 2. **TABOO WORDS**: Never use words from the category's vocab_taboo list.
 3. **NO LONG PREAMBLES**: Don't start with "I hope you're doing well" or "I'm reaching out today to". Get to the point.
 4. **NO RE-INTRODUCTIONS**: Don't introduce yourself after the first message in a conversation.

@@ -9,6 +9,9 @@ from __future__ import annotations
 import os
 import json
 import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -19,7 +22,7 @@ LLM_MODEL = os.environ.get("LLM_MODEL", "")
 
 # Default models per provider
 _DEFAULT_MODELS = {
-    "groq": "llama-3.1-70b-versatile",
+    "groq": "qwen/qwen3.8-27b",
     "openai": "gpt-4o-mini",
     "anthropic": "claude-3-5-sonnet-20241022",
     "gemini": "gemini-2.0-flash",
@@ -33,11 +36,11 @@ _ENDPOINTS = {
     "deepseek": "https://api.deepseek.com/v1/chat/completions",
 }
 
-_TIMEOUT = 25  # seconds — leaves 5s buffer within the 30s budget
+_TIMEOUT = 12  # seconds — leaves plenty of buffer within 30s tick budget
 
 
 def _get_model() -> str:
-    return LLM_MODEL or _DEFAULT_MODELS.get(LLM_PROVIDER, "llama-3.1-70b-versatile")
+    return os.environ.get("LLM_MODEL") or LLM_MODEL or _DEFAULT_MODELS.get(LLM_PROVIDER, "qwen/qwen3.8-27b")
 
 
 def complete(prompt: str, system: str | None = None, temperature: float = 0,
@@ -59,7 +62,8 @@ def complete(prompt: str, system: str | None = None, temperature: float = 0,
 
 def _complete_openai_compat(prompt: str, system: str | None,
                              temperature: float, max_tokens: int) -> str:
-    """Works for Groq, OpenAI, DeepSeek — all OpenAI-compatible APIs."""
+    """Works for Groq, OpenAI, DeepSeek — all OpenAI-compatible APIs with 429 backoff."""
+    import time
     endpoint = _ENDPOINTS.get(LLM_PROVIDER, _ENDPOINTS["groq"])
     messages = []
     if system:
@@ -78,11 +82,29 @@ def _complete_openai_compat(prompt: str, system: str | None,
         "Content-Type": "application/json",
     }
 
-    with httpx.Client(timeout=_TIMEOUT) as client:
-        resp = client.post(endpoint, json=body, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
+    last_exc = None
+    for attempt in range(2):
+        try:
+            with httpx.Client(timeout=_TIMEOUT) as client:
+                resp = client.post(endpoint, json=body, headers=headers)
+                if resp.status_code == 429:
+                    retry_after = float(resp.headers.get("retry-after", 1.5))
+                    time.sleep(min(retry_after, 2.0))
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                return data["choices"][0]["message"]["content"]
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                time.sleep(1.5)
+                last_exc = e
+                continue
+            raise
+        except Exception as e:
+            last_exc = e
+            time.sleep(0.5)
+
+    raise last_exc or RuntimeError("LLM request failed after retries")
 
 
 def _complete_anthropic(prompt: str, system: str | None,

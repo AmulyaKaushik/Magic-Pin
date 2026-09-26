@@ -67,8 +67,10 @@ def handle_reply(conversation_id: str, merchant_id: str,
     conversation = state.get_conversation(conversation_id)
 
     # ─── Phase 1: Auto-reply detection (fast, no LLM) ─────────────────────
-    auto_reply_result = _detect_auto_reply(message, conversation)
+    auto_reply_result = _detect_auto_reply(message, conversation, merchant_id, turn_number)
     if auto_reply_result is not None:
+        if auto_reply_result.get("action") == "send" and auto_reply_result.get("body"):
+            state.append_conversation(conversation_id, "vera", auto_reply_result["body"])
         return auto_reply_result
 
     # ─── Phase 2: Hostile / not-interested detection (fast, no LLM) ────────
@@ -76,8 +78,16 @@ def handle_reply(conversation_id: str, merchant_id: str,
     if hostile_result is not None:
         return hostile_result
 
-    # ─── Phase 3: LLM-powered reply composition ───────────────────────────
     merchant = state.get_merchant(merchant_id)
+
+    # ─── Phase 3: Commitment / Action mode transition (fast) ──────────────
+    commitment_result = _detect_commitment(message, merchant)
+    if commitment_result is not None:
+        if commitment_result.get("action") == "send" and commitment_result.get("body"):
+            state.append_conversation(conversation_id, "vera", commitment_result["body"])
+        return commitment_result
+
+    # ─── Phase 4: LLM-powered reply composition ───────────────────────────
     category = None
     if merchant:
         category = state.get_category(merchant.get("category_slug", ""))
@@ -94,7 +104,7 @@ def handle_reply(conversation_id: str, merchant_id: str,
             prompt=user_prompt,
             system=REPLY_SYSTEM_PROMPT,
             temperature=0,
-            max_tokens=400,
+            max_tokens=1200,
         )
 
         output = parse_llm_json(raw_response)
@@ -118,18 +128,24 @@ def handle_reply(conversation_id: str, merchant_id: str,
         return _fallback_reply(message, conversation, merchant)
 
 
-def _detect_auto_reply(message: str, conversation: list[dict]) -> Optional[dict]:
+def _detect_auto_reply(message: str, conversation: list[dict],
+                       merchant_id: str = "", turn_number: int = 1) -> Optional[dict]:
     """
     Detect auto-reply patterns. Returns a response dict or None.
     
     Detection rules:
     1. Message matches a known canned phrase
     2. Same message body appears 2+ times in conversation history
+    3. Auto-reply count for this merchant >= 2 across turns
     """
     msg_lower = message.lower().strip()
 
     # Check known canned phrases
     is_canned = any(phrase in msg_lower for phrase in AUTO_REPLY_PHRASES)
+
+    # If it is not a known canned phrase and it is turn 1 or 2, it is a real merchant reply
+    if not is_canned and turn_number <= 2:
+        return None
 
     # Check for repeated message from merchant
     merchant_msgs = [t["body"].lower().strip() for t in conversation
@@ -137,16 +153,18 @@ def _detect_auto_reply(message: str, conversation: list[dict]) -> Optional[dict]
     repeat_count = merchant_msgs.count(msg_lower)
 
     if is_canned or repeat_count >= 2:
+        count = state.record_auto_reply(merchant_id or "default")
+
         # Check if we've already tried the human-redirect
         vera_msgs = [t["body"] for t in conversation if t.get("from") == "vera"]
         already_redirected = any("owner" in m.lower() or "manager" in m.lower() or
-                                  "directly" in m.lower() for m in vera_msgs)
+                                  "directly" in m.lower() or "automated" in m.lower() for m in vera_msgs)
 
-        if already_redirected or repeat_count >= 2:
+        if already_redirected or repeat_count >= 2 or count >= 2 or turn_number >= 3:
             # Second auto-reply or already tried redirect — end gracefully
             return {
                 "action": "end",
-                "rationale": "Auto-reply detected (repeated canned message). Exiting gracefully after redirect attempt."
+                "rationale": "Auto-reply detected across turns. Exiting gracefully after redirect attempt."
             }
         else:
             # First auto-reply — try human redirect
@@ -170,6 +188,20 @@ def _detect_hostile(message: str) -> Optional[dict]:
             "rationale": "Merchant signaled not interested or hostile. Exiting gracefully."
         }
 
+    return None
+
+
+def _detect_commitment(message: str, merchant: dict | None) -> Optional[dict]:
+    """Detect explicit commitment and switch immediately to action mode (Pattern D fix)."""
+    msg_lower = message.lower().strip()
+    commitment_triggers = ["lets do it", "let's do it", "go ahead", "proceed", "whats next", "what's next"]
+    if any(phrase in msg_lower for phrase in commitment_triggers):
+        return {
+            "action": "send",
+            "body": "Done! Here is the next step: I'm sending this draft live to confirm and proceed. I'll share the performance update as soon as it's ready.",
+            "cta": "none",
+            "rationale": "Merchant signaled commitment. Switched to immediate action mode."
+        }
     return None
 
 

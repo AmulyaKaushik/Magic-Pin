@@ -137,7 +137,7 @@ async def tick(body: TickRequest):
     for trg_id in body.available_triggers:
         # Budget check — stop if we're running out of time
         elapsed = time.time() - start_time
-        if elapsed > 25:  # Leave 5s buffer
+        if elapsed > 15:  # Leave safe 15s buffer for judge's 30s timeout
             logger.warning(f"Tick time budget exceeded at {elapsed:.1f}s, stopping at {len(actions)} actions")
             break
 
@@ -268,8 +268,6 @@ async def reply(body: ReplyRequest):
 @app.post("/v1/teardown")
 async def teardown():
     """Wipe all in-memory state at end of test."""
-    state.contexts.clear()
-    state.conversations.clear()
-    state.suppression_log.clear()
+    state.clear_all()
     logger.info("Teardown complete — all state wiped")
     return {"status": "torn_down"}

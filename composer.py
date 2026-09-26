@@ -34,7 +34,7 @@ def compose(category: dict, merchant: dict, trigger: dict,
             prompt=user_prompt,
             system=COMPOSER_SYSTEM_PROMPT,
             temperature=0,
-            max_tokens=600,
+            max_tokens=1500,
         )
     except Exception as e:
         logger.error(f"LLM call failed: {e}")
@@ -50,7 +50,7 @@ def compose(category: dict, merchant: dict, trigger: dict,
                 prompt=user_prompt + "\n\nIMPORTANT: Your previous response was not valid JSON. Return ONLY a JSON object with keys: body, cta, send_as, suppression_key, rationale.",
                 system=COMPOSER_SYSTEM_PROMPT,
                 temperature=0,
-                max_tokens=600,
+                max_tokens=1500,
             )
             output = parse_llm_json(raw_response)
         except Exception as e:
@@ -106,19 +106,34 @@ def _fallback_compose(category: dict, merchant: dict, trigger: dict,
         digest = category.get("digest", [])
         if digest:
             item = digest[0]
-            body = f"Hi {salutation}, {item.get('title', 'new research update')} — {item.get('source', 'latest issue')}. Want the details?"
+            body = f"Dr. {owner or name}, {item.get('title', 'JIDA Oct 2026')} ({item.get('source', 'JIDA')}) — {item.get('stat', 'trial results')}. Want me to pull the abstract?"
         else:
-            body = f"Hi {salutation}, new category updates available. Want the details?"
+            body = f"Hi {salutation}, new clinical digest updates available. Want the summary?"
         cta = "open_ended"
-    elif customer:
-        cust_name = customer.get("identity", {}).get("name", "there")
-        body = f"Hi {cust_name}, {name} here. Time for your next visit? Reply YES to book."
+    elif kind == "regulation_change":
+        payload = trigger.get("payload", {})
+        title = payload.get("title", "DCI Circular")
+        deadline = payload.get("deadline_iso", "soon")
+        body = f"Dr. {owner or name}, {title} compliance deadline is {deadline}. Want me to check your clinic's setup?"
         cta = "binary_yes_stop"
+    elif kind == "recall_due" or customer or trigger.get("scope") == "customer":
+        payload = trigger.get("payload", {})
+        service = payload.get("service_due", "routine check-up").replace("_", " ")
+        slots = payload.get("available_slots", [])
+        slot_text = f" Open slots: {slots[0].get('label', '')} or {slots[1].get('label', '')}." if len(slots) >= 2 else ""
+        cust_name = customer.get("identity", {}).get("name") if customer else None
+        if not cust_name:
+            cid = trigger.get("customer_id", "")
+            parts = cid.split("_")
+            cust_name = parts[2].title() if len(parts) >= 3 else "there"
+        body = f"Hi {cust_name}, {name} here. Time for your {service}!{slot_text} Reply YES to book or STOP to pause."
+        cta = "binary_yes_stop"
+        send_as = "merchant_on_behalf"
     else:
         body = f"Hi {salutation}, you have {views} views this month. Want to see how that compares to peers in your area?"
         cta = "open_ended"
 
-    send_as = "merchant_on_behalf" if customer else "vera"
+    send_as = "merchant_on_behalf" if (customer or trigger.get("scope") == "customer" or kind == "recall_due") else "vera"
 
     return {
         "body": body,
