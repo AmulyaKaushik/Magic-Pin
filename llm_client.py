@@ -9,9 +9,11 @@ from __future__ import annotations
 import os
 import json
 import httpx
-from dotenv import load_dotenv
-
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
