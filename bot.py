@@ -106,12 +106,13 @@ async def metadata():
     return {
         "team_name": "Amulya Kaushik",
         "team_members": ["Amulya Kaushik"],
-        "model": "llama-3.1-70b-versatile (Groq)",
+        "model": "qwen/qwen3.8-27b (Groq) with Gemini 3.5 Flash Lite Failover",
         "approach": "Trigger-routed single-prompt composer with rubric-aware system prompt, deterministic auto-reply detection, and LLM-powered intent classification",
-        "contact_email": "amulya@example.com",
+        "contact_email": "amulyakaushik7@gmail.com",
         "version": "1.0.0",
         "submitted_at": datetime.now(timezone.utc).isoformat(),
     }
+
 
 
 # ═════════════════════════════════════════════════════════════════════════════
