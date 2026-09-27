@@ -8,5 +8,4 @@ venv/
 .venv/
 .env
 .DS_Store
-submission.jsonl
 scratch/

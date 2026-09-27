@@ -144,6 +144,35 @@ async def push_context(body: ContextRequest):
 # ENDPOINT 4: POST /v1/tick
 # ═════════════════════════════════════════════════════════════════════════════
 
+# Trigger urgency tiers for tick pacing (Strategy A)
+_TRIGGER_KIND_PRIORITY = {
+    # Critical business urgency (Tier 5)
+    "perf_dip": 5,
+    "renewal_due": 5,
+    "dispute": 5,
+    "payment_failed": 5,
+    "low_rating": 5,
+    # High responsiveness urgency (Tier 4)
+    "lead_received": 4,
+    "bill_upload": 4,
+    "campaign_expiring": 4,
+    # Medium engagement urgency (Tier 3)
+    "merchant_inactivity": 3,
+    "catalogue_view_spike": 3,
+    "milestone_reached": 3,
+}
+
+
+def _get_trigger_priority(trg_id: str) -> tuple[int, str]:
+    trg = state.get_trigger(trg_id)
+    if not trg:
+        return (-1, trg_id)
+    urgency = trg.get("urgency")
+    if urgency is not None and isinstance(urgency, (int, float)):
+        return (int(urgency), trg_id)
+    kind = trg.get("kind", "")
+    return (_TRIGGER_KIND_PRIORITY.get(kind, 2), trg_id)
+
 
 class TickRequest(BaseModel):
     now: str
@@ -154,16 +183,20 @@ class TickRequest(BaseModel):
 async def tick(body: TickRequest):
     actions = []
     start_time = time.time()
+    contacted_merchants = set()
 
-    for trg_id in body.available_triggers:
-        # Budget check — stop if we're running out of time
+    # Strategy A: Sort triggers by urgency so highest-impact triggers are handled first
+    sorted_triggers = sorted(body.available_triggers, key=_get_trigger_priority, reverse=True)
+
+    for trg_id in sorted_triggers:
+        # Budget check — judge simulator has a strict 15s timeout
         elapsed = time.time() - start_time
-        if elapsed > 15:  # Leave safe 15s buffer for judge's 30s timeout
-            logger.warning(f"Tick time budget exceeded at {elapsed:.1f}s, stopping at {len(actions)} actions")
+        if elapsed > 10.0:
+            logger.warning(f"Tick time budget reached at {elapsed:.1f}s, returning {len(actions)} actions")
             break
 
-        # Cap at 20 actions per tick
-        if len(actions) >= 20:
+        # Strategy A: Cap at 3 actions per tick to pace LLM rate limits across the 60-min window
+        if len(actions) >= 3:
             break
 
         # Look up trigger
@@ -181,6 +214,11 @@ async def tick(body: TickRequest):
         # Resolve merchant
         merchant_id = trigger.get("merchant_id")
         if not merchant_id:
+            continue
+
+        # Avoid spamming the same merchant multiple times within a single tick
+        if merchant_id in contacted_merchants:
+            logger.debug(f"Merchant {merchant_id} already contacted in this tick, deferring trigger {trg_id}")
             continue
 
         merchant = state.get_merchant(merchant_id)
@@ -233,6 +271,7 @@ async def tick(body: TickRequest):
         }
 
         actions.append(action)
+        contacted_merchants.add(merchant_id)
 
         # Mark suppressed
         if suppression_key:
