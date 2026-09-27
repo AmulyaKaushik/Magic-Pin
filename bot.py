@@ -59,7 +59,27 @@ async def check_payload_size(request: Request, call_next):
     return await call_next(request)
 
 
-from starlette.responses import JSONResponse
+# ═════════════════════════════════════════════════════════════════════════════
+# ROOT: GET /
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+@app.get("/")
+async def root():
+    return {
+        "service": "magicpin Vera AI Merchant Assistant",
+        "team": "Amulya Kaushik",
+        "status": "online",
+        "endpoints": {
+            "healthz": "/v1/healthz",
+            "metadata": "/v1/metadata",
+            "context": "/v1/context",
+            "tick": "/v1/tick",
+            "reply": "/v1/reply",
+            "docs": "/docs",
+        },
+    }
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 # ENDPOINT 1: GET /v1/healthz
